@@ -1,57 +1,109 @@
-#include <fstream>
+#include"src\tgaimage.h"
+#include "src\Renderer.h"
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "src\utils\tiny_obj_loader.h"
 #include "src\math\Vector3.h"
-struct Rgb 
-{
-	unsigned char r, g, b;
-};
+#include <vector>
+#include "src\math\Matrix44.h"
 
-float EdgeFunction(const vec3f& a, const vec3f&b, const vec3f&p) 
-{
-	return (p.x - a.x)*(b.y - a.y) - (p.y - a.y)*(b.x - a.x);
+using namespace Math;
+
+uint32_t h = 800, w = 800;
+
+Renderer r(w, h);
+vec3f world2screen(vec3f v) {
+	return vec3f(int((v.x + 1.)*w / 2. + .5), int((v.y + 1.)*h / 2. + .5), v.z);
 }
-
-int main() 
+int main()
 {
-	const uint32_t w = 512;
-	const uint32_t h = 512;
-	std::ofstream ofs("../img.ppm",std::ios::binary);
-	ofs << "P6 " << w << " " << h << " " << "255 /n";
 
-	vec3f v0(100,100,0);
-	vec3f v1(100, 450, 0);
-	vec3f v2(300, 225, 0);
-	vec3f c0(1, 0, 0);
-	vec3f c1(0, 1, 0);
-	vec3f c2(0, 0, 1);
-	Rgb framebuffer[w*h];
-	float area = EdgeFunction(v0, v1, v2);
-	for (uint32_t j = 0; j < h; j++) 
-	{
-		for (uint32_t i = 0; i < w; i++) 
-		{	
-			vec3f p(i + 0.5f,j +0.5f,0);
-			float w0 = EdgeFunction(v0, v1, p);
-			float w1 = EdgeFunction(v1, v2, p);
-			float w2 = EdgeFunction(v2, v0, p);
+	const TGAColor c(255, 0, 0, 255);
+	TGAImage img;
+	img.read_tga_file("../obj/african_head/african_head_diffuse.tga");
 
-			if (w0 >= 0 && w1 >= 0 && w2 >= 0) 
-			{
-			
-				w0 /= area;
-				w1 /= area;
-				w2 /= area;
-				
-				float r = w0*c0.x + w1*c1.x + w2*c2.x;
-				float g = w0*c0.y + w1*c1.y + w2*c2.y;
-				float b = w0*c0.z + w1*c1.z + w2*c2.z;
+	vec3f lightDir(0, 0, -1);
+	vec3f lightColor(1, 1, 1);
 
-				framebuffer[j*w + i].r = (unsigned char)(255 * r);
-				framebuffer[j*w + i].g = (unsigned char)(255 * g);
-				framebuffer[j*w + i].b = (unsigned char)(255 * b);
+
+	std::string inputfile = "../obj/african_head/african_head.obj";
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+
+	std::string err;
+	bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, inputfile.c_str());
+
+	std::vector<Vertex> rasterCoords(3);
+	std::vector<Vertex> worldCoords(3);
+
+	for (size_t s = 0; s < shapes.size(); s++) {
+		// Loop over faces(polygon)
+		size_t index_offset = 0;
+		for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+			int fv = shapes[s].mesh.num_face_vertices[f];
+
+			// Loop over vertices in the face.
+			for (size_t v = 0; v < fv; v++) {
+				// access to vertex
+
+				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+				worldCoords[v].pos.x = attrib.vertices[3 * idx.vertex_index + 0];
+				worldCoords[v].pos.y = attrib.vertices[3 * idx.vertex_index + 1];
+				worldCoords[v].pos.z = attrib.vertices[3 * idx.vertex_index + 2];
+				worldCoords[v].uv.x = attrib.texcoords[2 * idx.texcoord_index + 0];
+				worldCoords[v].uv.y = attrib.texcoords[2 * idx.texcoord_index + 1];
+
+				if (worldCoords[v].uv.x < -1.0f || worldCoords[v].uv.y < -1.0f) 
+				{
+					int kkk = 0;
+				}
+				//rasterCoords[v].z = 1 / vert.z;
+				/*	tinyobj::real_t nx = attrib.normals[3 * idx.normal_index + 0];
+					tinyobj::real_t ny = attrib.normals[3 * idx.normal_index + 1];
+					tinyobj::real_t nz = attrib.normals[3 * idx.normal_index + 2];
+				;*/
+
 			}
-		}
-	}
+			mat44f projection;
+			projection.Perspective(Math::ToRadian(90.0f), 1000.f, 0.01f, (float)w / (float)h);
 
-	ofs.write((char*)framebuffer, w*h*3);
-	ofs.close();
+
+
+
+			rasterCoords[0].pos.x = (worldCoords[0].pos.x + 1.0f)*w*0.5f + 0.5f;
+			rasterCoords[0].pos.y = (worldCoords[0].pos.y + 1.0f)*h*0.5f + 0.5f;
+			rasterCoords[0].pos.z = -1 / worldCoords[0].pos.z;
+			rasterCoords[0].uv = worldCoords[0].uv*rasterCoords[0].pos.z;
+
+			rasterCoords[1].pos.x = (worldCoords[1].pos.x + 1.0f)*w*0.5f + 0.5f;
+			rasterCoords[1].pos.y = (worldCoords[1].pos.y + 1.0f)*h*0.5f + 0.5f;
+			rasterCoords[1].pos.z = -1 / worldCoords[1].pos.z;
+			rasterCoords[1].uv = worldCoords[1].uv *rasterCoords[1].pos.z;
+
+			rasterCoords[2].pos.x = (worldCoords[2].pos.x + 1.0f)*w*0.5f + 0.5f;
+			rasterCoords[2].pos.y = (worldCoords[2].pos.y + 1.0f)*h*0.5f + 0.5f;
+			rasterCoords[2].pos.z = -1.0f / worldCoords[2].pos.z;
+			rasterCoords[2].uv = worldCoords[2].uv*rasterCoords[2].pos.z;
+
+
+
+			vec3f triangleNormal = Vector3<float>::Cross(worldCoords[2].pos - worldCoords[0].pos, worldCoords[1].pos - worldCoords[0].pos).Normalize();
+			float inten = Vector3<float>::Dot(triangleNormal, lightDir);
+			
+			if (inten > 0)
+			{
+				// TGAColor(255 * inten, 255 * inten, inten * 255, 255)
+
+				r.FillTriangle(rasterCoords[0], rasterCoords[1], rasterCoords[2],img);
+			}
+
+			index_offset += fv;
+		}
+
+
+
+
+		r.WriteToFile("../img.tga");
+		return 0;
+	}
 }
